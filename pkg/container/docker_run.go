@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -90,8 +91,10 @@ func (cr *containerReference) Start(attach bool) common.Executor {
 				cr.tryReadGID(),
 				func(ctx context.Context) error {
 					// If this fails, then folders have wrong permissions on non root container
-					if cr.UID != 0 || cr.GID != 0 {
-						_ = cr.Exec([]string{"chown", "-R", fmt.Sprintf("%d:%d", cr.UID, cr.GID), cr.input.WorkingDir}, nil, "0", "")(ctx)
+					if cr.UID != 0 || cr.GID != 0 { // should check with host uid
+						if false {
+							_ = cr.Exec([]string{"chown", "-R", fmt.Sprintf("%d:%d", cr.UID, cr.GID), cr.input.WorkingDir}, nil, "0", "")(ctx)
+						}
 					}
 					return nil
 				},
@@ -127,8 +130,10 @@ func (cr *containerReference) CopyDir(destPath string, srcPath string, useGitIgn
 		cr.copyDir(destPath, srcPath, useGitIgnore),
 		func(ctx context.Context) error {
 			// If this fails, then folders have wrong permissions on non root container
-			if cr.UID != 0 || cr.GID != 0 {
-				_ = cr.Exec([]string{"chown", "-R", fmt.Sprintf("%d:%d", cr.UID, cr.GID), destPath}, nil, "0", "")(ctx)
+			if false {
+				if cr.UID != 0 || cr.GID != 0 {
+					_ = cr.Exec([]string{"chown", "-R", fmt.Sprintf("%d:%d", cr.UID, cr.GID), destPath}, nil, "0", "")(ctx)
+				}
 			}
 			return nil
 		},
@@ -153,8 +158,7 @@ func (cr *containerReference) UpdateFromImageEnv(env *map[string]string) common.
 
 func (cr *containerReference) Exec(command []string, env map[string]string, user, workdir string) common.Executor {
 	return common.NewPipelineExecutor(
-		common.NewInfoExecutor("%sdocker exec cmd=[%s] user=%s workdir=%s", logPrefix, strings.Join(command, " "), user, workdir),
-		cr.connect(),
+		common.NewInfoExecutor("%sdocker exec cmd=[%s] user=%s workdir=%s", logPrefix, strings.Join(command, " "), user, workdir), cr.connect(),
 		cr.find(),
 		cr.exec(command, env, user, workdir),
 	).IfNot(common.Dryrun)
@@ -655,6 +659,74 @@ func (cr *containerReference) CopyTarStream(ctx context.Context, destPath string
 		return fmt.Errorf("failed to copy content to container: %w", err)
 	}
 	return nil
+}
+
+func (cr *containerReference) rsyncDir(dstPath string, srcPath string, useGitIgnore bool) common.Executor {
+	return func(ctx context.Context) error {
+		logger := common.Logger(ctx)
+
+		srcPrefix := filepath.Dir(srcPath)
+		if !strings.HasSuffix(srcPrefix, string(filepath.Separator)) {
+			srcPrefix += string(filepath.Separator)
+		}
+		logger.Debugf("Stripping prefix:%s src:%s", srcPrefix, srcPath)
+
+		var ignorer gitignore.Matcher
+		if useGitIgnore {
+			ps, err := gitignore.ReadPatterns(polyfill.New(osfs.New(srcPath)), nil)
+			if err != nil {
+				return fmt.Errorf("Error loading .gitignore: %v", err)
+			}
+
+			ignorer = gitignore.NewMatcher(ps)
+		}
+
+		fh, err := newRSyncCollector()
+		if err != nil {
+			return fmt.Errorf("Error handling rsync exclusion files collection: %v", err)
+		}
+
+		fc := &fileCollector{
+			Fs:        &defaultFs{},
+			Ignorer:   ignorer,
+			SrcPath:   srcPath,
+			SrcPrefix: srcPrefix,
+			Handler:   fh,
+		}
+
+		err = filepath.Walk(srcPath, fc.collectFiles(ctx, []string{}))
+		if err != nil {
+			return err
+		}
+
+		defer func() {
+			if tempErr := fh.Remove(); tempErr != nil {
+				err = fmt.Errorf("failed to remove exclusion file: %w", err)
+			}
+		}()
+		inclusionFile, err := fh.EndOf()
+		if err != nil {
+			return fmt.Errorf("cannot go at start in exclusion file: %w", err)
+		}
+		// logger.Debugf("Computed included files in: $s", inclusionFile.Name())
+		logger.Infof("Computed included files in: %s", inclusionFile.Name())
+		args := []string{
+			"-av",
+			"--whole-file",
+			"--rsh=docker exec -i",
+			fmt.Sprintf("--include-from=%s", inclusionFile.Name()),
+			srcPath,
+			fmt.Sprintf("%s:%s", cr.id, dstPath),
+		}
+		bytes, err := exec.Command("rsync", args...).CombinedOutput()
+		lines := string(bytes)
+		fmt.Println(lines)
+		if err != nil {
+			return fmt.Errorf("failed to rsync content to container: %w\n>\n%s\n.", err, lines)
+		}
+
+		return nil
+	}
 }
 
 func (cr *containerReference) copyDir(dstPath string, srcPath string, useGitIgnore bool) common.Executor {

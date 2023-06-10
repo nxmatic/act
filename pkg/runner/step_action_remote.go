@@ -48,8 +48,9 @@ func (sar *stepActionRemote) prepareActionExecutor() common.Executor {
 
 		github := sar.getGithubContext(ctx)
 		sar.remoteAction.URL = github.ServerURL
+		eval := sar.RunContext.NewExpressionEvaluator(ctx)
 
-		if sar.remoteAction.IsCheckout() && isLocalCheckout(github, sar.Step) && !sar.RunContext.Config.NoSkipCheckout {
+		if sar.remoteAction.IsCheckout() && isLocalCheckout(ctx, github, sar.Step, eval) && !sar.RunContext.Config.NoSkipCheckout {
 			common.Logger(ctx).Debugf("Skipping local actions/checkout because workdir was already copied")
 			return nil
 		}
@@ -111,12 +112,13 @@ func (sar *stepActionRemote) main() common.Executor {
 		sar.prepareActionExecutor(),
 		runStepExecutor(sar, stepStageMain, func(ctx context.Context) error {
 			github := sar.getGithubContext(ctx)
-			if sar.remoteAction.IsCheckout() && isLocalCheckout(github, sar.Step) && !sar.RunContext.Config.NoSkipCheckout {
-				if sar.RunContext.Config.BindWorkdir {
+			eval := sar.RunContext.NewExpressionEvaluator(ctx)
+			if sar.remoteAction.IsCheckout() && isLocalCheckout(ctx, github, sar.Step, eval) && !sar.RunContext.Config.NoSkipCheckout {
+				if sar.RunContext.Config.BindWorkdir ||
+					sar.RunContext.Config.NoSynchCheckout {
 					common.Logger(ctx).Debugf("Skipping local actions/checkout because you bound your workspace")
 					return nil
 				}
-				eval := sar.RunContext.NewExpressionEvaluator(ctx)
 				copyToPath := path.Join(sar.RunContext.JobContainer.ToContainerPath(sar.RunContext.Config.Workdir), eval.Interpolate(ctx, sar.Step.With["path"]))
 				return sar.RunContext.JobContainer.CopyDir(copyToPath, sar.RunContext.Config.Workdir+string(filepath.Separator)+".", sar.RunContext.Config.UseGitIgnore)(ctx)
 			}
@@ -161,7 +163,8 @@ func (sar *stepActionRemote) getIfExpression(ctx context.Context, stage stepStag
 	switch stage {
 	case stepStagePre:
 		github := sar.getGithubContext(ctx)
-		if sar.remoteAction.IsCheckout() && isLocalCheckout(github, sar.Step) && !sar.RunContext.Config.NoSkipCheckout {
+		eval := sar.RunContext.NewExpressionEvaluator(ctx)
+		if sar.remoteAction.IsCheckout() && isLocalCheckout(ctx, github, sar.Step, eval) && !sar.RunContext.Config.NoSkipCheckout {
 			// skip local checkout pre step
 			return "false"
 		}

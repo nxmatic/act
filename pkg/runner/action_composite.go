@@ -59,6 +59,7 @@ func newCompositeRunContext(ctx context.Context, parent *RunContext, step action
 				Jobs: map[string]*model.Job{
 					"composite-job": {},
 				},
+				Defaults: parent.Run.Workflow.Defaults,
 			},
 		},
 		Config:       &configCopy,

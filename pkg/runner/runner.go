@@ -45,6 +45,7 @@ type Config struct {
 	ContainerArchitecture              string                     // Desired OS/architecture platform for running containers
 	ContainerDaemonSocket              string                     // Path to Docker daemon socket
 	ContainerOptions                   string                     // Options for the job container
+	ContainerCommand                   []string                   // Command to execute in the job container
 	UseGitIgnore                       bool                       // controls if paths in .gitignore should not be copied into container, default true
 	GitHubInstance                     string                     // GitHub instance to use, default "github.com"
 	ContainerCapAdd                    []string                   // list of kernel capabilities to add to the containers
@@ -54,6 +55,7 @@ type Config struct {
 	ArtifactServerAddr                 string                     // the address the artifact server binds to
 	ArtifactServerPort                 string                     // the port the artifact server binds to
 	NoSkipCheckout                     bool                       // do not skip actions/checkout
+	NoSynchCheckout                    bool                       // do not synch actions/checkout
 	RemoteName                         string                     // remote name in local git repo config
 	ReplaceGheActionWithGithubCom      []string                   // Use actions from GitHub Enterprise instance to GitHub
 	ReplaceGheActionTokenWithGithubCom string                     // Token of private action repo on GitHub.

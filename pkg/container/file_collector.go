@@ -2,6 +2,7 @@ package container
 
 import (
 	"archive/tar"
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -19,6 +20,44 @@ import (
 
 type fileCollectorHandler interface {
 	WriteFile(path string, fi fs.FileInfo, linkName string, f io.Reader) error
+}
+
+type rsyncCollector struct {
+	file   *os.File
+	writer *bufio.Writer
+}
+
+func newRSyncCollector() (*rsyncCollector, error) {
+	file, err := os.CreateTemp("", "rsync-exclusions-*.txt")
+	if err != nil {
+		err = fmt.Errorf("Error creating temporary file: %w", err)
+		return nil, err
+	}
+	return &rsyncCollector{
+		file:   file,
+		writer: bufio.NewWriter(file),
+	}, nil
+}
+
+func (rc rsyncCollector) WriteFile(fpath string, fi fs.FileInfo, linkName string, f io.Reader) error {
+	_, err := rc.writer.WriteString(fpath + "\n")
+	return err
+}
+
+func (rc rsyncCollector) EndOf() (*os.File, error) {
+	_, err := rc.file.Seek(0, 0)
+	return rc.file, err
+}
+
+func (rc rsyncCollector) Remove() error {
+	rc.file.Close()
+
+	err := os.Remove(rc.file.Name())
+	if err != nil {
+		return fmt.Errorf("Error removing temporary rsync exclusion file: %w", err)
+	}
+
+	return nil
 }
 
 type tarCollector struct {

@@ -10,5 +10,16 @@
   },
   "[yaml]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "cmake.configureOnOpen": false,
+  "workbench.colorCustomizations": {
+    "[GitHub Light]": {
+      "activityBar.background": "#fafbfc",
+      "titleBar.activeBackground": "#fafbfc",
+      "titleBar.activeForeground": "#111C0E"
+    },
+    "activityBar.background": "#7FC733",
+    "titleBar.activeBackground": "#8CCF44",
+    "titleBar.activeForeground": "#121C07"
   }
 }

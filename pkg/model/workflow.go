@@ -560,7 +560,7 @@ func (s *Step) ShellCommand() string {
 	//Reference: https://github.com/actions/runner/blob/8109c962f09d9acc473d92c595ff43afceddb347/src/Runner.Worker/Handlers/ScriptHandlerHelpers.cs#L9-L17
 	switch s.Shell {
 	case "", "bash":
-		shellCommand = "bash --noprofile --norc -e -o pipefail {0}"
+		shellCommand = "bash --noprofile --norc -e -x -o pipefail {0}"
 	case "pwsh":
 		shellCommand = "pwsh -command . '{0}'"
 	case "python":

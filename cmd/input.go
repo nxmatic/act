@@ -35,6 +35,7 @@ type Input struct {
 	containerArchitecture              string
 	containerDaemonSocket              string
 	containerOptions                   string
+	containerCommand                   []string
 	noWorkflowRecurse                  bool
 	useGitIgnore                       bool
 	githubInstance                     string
@@ -50,6 +51,7 @@ type Input struct {
 	cacheServerPort                    uint16
 	jsonLogger                         bool
 	noSkipCheckout                     bool
+	noSynchCheckout                    bool
 	remoteName                         string
 	replaceGheActionWithGithubCom      []string
 	replaceGheActionTokenWithGithubCom string

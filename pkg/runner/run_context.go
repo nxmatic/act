@@ -151,7 +151,7 @@ func (rc *RunContext) GetBindsAndMounts() ([]string, map[string]string) {
 		}
 		binds = append(binds, fmt.Sprintf("%s:%s%s", rc.Config.Workdir, ext.ToContainerPath(rc.Config.Workdir), bindModifiers))
 	} else {
-		mounts[name] = ext.ToContainerPath(rc.Config.Workdir)
+		mounts[name+"-pws"] = ext.ToContainerPath(rc.Config.Workdir)
 	}
 
 	return binds, mounts
@@ -262,15 +262,19 @@ func (rc *RunContext) startJobContainer() common.Executor {
 		rc.cleanUpJobContainer = func(ctx context.Context) error {
 			if rc.JobContainer != nil && !rc.Config.ReuseContainers {
 				return rc.JobContainer.Remove().
-					Then(container.NewDockerVolumeRemoveExecutor(rc.jobContainerName(), false)).
+					Then(container.NewDockerVolumeRemoveExecutor(rc.jobContainerName()+"-pws", false)).
 					Then(container.NewDockerVolumeRemoveExecutor(rc.jobContainerName()+"-env", false))(ctx)
 			}
 			return nil
 		}
 
 		rc.JobContainer = container.NewContainer(&container.NewContainerInput{
-			Cmd:         nil,
-			Entrypoint:  []string{"tail", "-f", "/dev/null"},
+			Cmd: nil,
+			Entrypoint: []string{
+				"bash",
+				"-xc",
+				"exec $( tail=\"tail -f /dev/null\"; tini=\"$(command -v tini)\" ; if [[ -n \"$tini\" ]] ; then exec $tini -s -- $tail; else $tail; fi)",
+			},
 			WorkingDir:  ext.ToContainerPath(rc.Config.Workdir),
 			Image:       image,
 			Username:    username,
@@ -418,7 +422,8 @@ func (rc *RunContext) startContainer() common.Executor {
 		if rc.IsHostEnv(ctx) {
 			return rc.startHostEnvironment()(ctx)
 		}
-		return rc.startJobContainer()(ctx)
+		err := rc.startJobContainer()(ctx)
+		return err
 	}
 }
 
@@ -710,7 +715,7 @@ func (rc *RunContext) getGithubContext(ctx context.Context) *model.GithubContext
 	return ghc
 }
 
-func isLocalCheckout(ghc *model.GithubContext, step *model.Step) bool {
+func isLocalCheckout(ctx context.Context, ghc *model.GithubContext, step *model.Step, eval ExpressionEvaluator) bool {
 	if step.Type() == model.StepTypeInvalid {
 		// This will be errored out by the executor later, we need this here to avoid a null panic though
 		return false
@@ -727,10 +732,10 @@ func isLocalCheckout(ghc *model.GithubContext, step *model.Step) bool {
 		return false
 	}
 
-	if repository, ok := step.With["repository"]; ok && repository != ghc.Repository {
+	if repository, ok := step.With["repository"]; ok && eval.Interpolate(ctx, repository) != ghc.Repository {
 		return false
 	}
-	if repository, ok := step.With["ref"]; ok && repository != ghc.Ref {
+	if ref, ok := step.With["ref"]; ok && eval.Interpolate(ctx, ref) != ghc.Ref {
 		return false
 	}
 	return true
